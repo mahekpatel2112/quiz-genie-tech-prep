@@ -1,8 +1,143 @@
 
 import { Question, QuizGenerationParams } from "@/types/quiz";
 
-// This is a mock service that would be replaced with actual API calls in a production app
-export const generateQuizQuestions = async (params: QuizGenerationParams): Promise<Question[]> => {
+// Helper function to generate a system prompt based on the quiz parameters
+const generateSystemPrompt = (params: QuizGenerationParams): string => {
+  const { subject, topic, questionType, numberOfQuestions } = params;
+  
+  let prompt = `Generate ${numberOfQuestions} unique ${questionType} questions about ${topic} in the field of ${subject}.`;
+  
+  if (questionType === "Multiple Choice") {
+    prompt += ` Each question should have 4 options with only one correct answer. The correct answer should be marked with the index (0-3).`;
+  } else if (questionType === "True/False") {
+    prompt += ` Each question should have a boolean answer (true/false) and a brief explanation.`;
+  } else if (questionType === "Short Answer") {
+    prompt += ` Each question should have a suggested answer that's concise but comprehensive.`;
+  }
+  
+  prompt += ` Return the questions in a structured JSON format that matches the following TypeScript types:\n\n`;
+  
+  if (questionType === "Multiple Choice") {
+    prompt += `
+    {
+      type: "Multiple Choice",
+      question: string,  // The question text
+      options: string[], // Array of 4 options
+      correctOption: number // Index of correct answer (0-3)
+    }
+    `;
+  } else if (questionType === "True/False") {
+    prompt += `
+    {
+      type: "True/False",
+      question: string,  // The question statement
+      answer: boolean,   // true or false
+      explanation: string // Why the statement is true or false
+    }
+    `;
+  } else if (questionType === "Short Answer") {
+    prompt += `
+    {
+      type: "Short Answer",
+      question: string,  // The question text
+      suggestedAnswer: string // A sample correct answer
+    }
+    `;
+  }
+  
+  return prompt;
+};
+
+// Function to parse the JSON response from OpenAI
+const parseOpenAIResponse = (text: string, questionType: QuestionType): Question[] => {
+  try {
+    // Try to find and extract JSON from the response
+    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    if (jsonMatch) {
+      const jsonStr = jsonMatch[0];
+      const parsedQuestions = JSON.parse(jsonStr) as Question[];
+      
+      // Validate that the questions have the required fields
+      return parsedQuestions.filter(q => {
+        if (q.type !== questionType) return false;
+        
+        if (q.type === "Multiple Choice") {
+          return q.question && Array.isArray(q.options) && q.options.length === 4 && typeof q.correctOption === 'number';
+        } else if (q.type === "True/False") {
+          return q.question && typeof q.answer === 'boolean' && q.explanation;
+        } else if (q.type === "Short Answer") {
+          return q.question && q.suggestedAnswer;
+        }
+        
+        return false;
+      });
+    }
+    throw new Error("Could not find JSON in response");
+  } catch (error) {
+    console.error("Error parsing OpenAI response:", error);
+    throw new Error("Failed to parse questions from API response");
+  }
+};
+
+// Function to generate questions using OpenAI API
+export const generateQuizQuestions = async (params: QuizGenerationParams, apiKey?: string): Promise<Question[]> => {
+  if (!apiKey) {
+    // Fallback to mock generator if no API key
+    return generateMockQuizQuestions(params);
+  }
+  
+  try {
+    const systemPrompt = generateSystemPrompt(params);
+    
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: `Generate ${params.numberOfQuestions} unique quiz questions about ${params.topic} in ${params.subject} in JSON format.`
+          }
+        ],
+        temperature: 0.7
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error?.message || "API request failed");
+    }
+    
+    const data = await response.json();
+    const content = data.choices[0]?.message?.content;
+    
+    if (!content) {
+      throw new Error("No content in response");
+    }
+    
+    const questions = parseOpenAIResponse(content, params.questionType);
+    
+    if (questions.length < params.numberOfQuestions) {
+      console.warn(`Received fewer questions than requested: ${questions.length}/${params.numberOfQuestions}`);
+    }
+    
+    return questions;
+  } catch (error) {
+    console.error("Error generating questions with OpenAI:", error);
+    throw error;
+  }
+};
+
+// Mock generator for fallback when no API key is provided
+export const generateMockQuizQuestions = async (params: QuizGenerationParams): Promise<Question[]> => {
   // Simulate API call delay
   await new Promise(resolve => setTimeout(resolve, 1500));
   

@@ -1,10 +1,10 @@
-
 import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { QuizGenerationParams, Question, QuizAttemptState } from "@/types/quiz";
 import { generateQuizQuestions } from "@/services/quizService";
 import QuizForm from "@/components/QuizForm";
 import QuizResults from "@/components/QuizResults";
+import ApiKeyInput from "@/components/ApiKeyInput";
 import { BookOpen, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,11 +14,16 @@ const Index = () => {
     submitted: false
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [apiKey, setApiKey] = useState<string | null>(null);
+
+  const handleApiKeySubmit = (key: string) => {
+    setApiKey(key);
+  };
 
   const handleGenerateQuestions = async (params: QuizGenerationParams) => {
     try {
       setIsLoading(true);
-      const generatedQuestions = await generateQuizQuestions(params);
+      const generatedQuestions = await generateQuizQuestions(params, apiKey || undefined);
       setQuizState({
         questions: generatedQuestions,
         submitted: false
@@ -26,7 +31,11 @@ const Index = () => {
       toast.success(`Successfully generated ${params.numberOfQuestions} questions!`);
     } catch (error) {
       console.error("Error generating questions:", error);
-      toast.error("Failed to generate questions. Please try again.");
+      if (apiKey) {
+        toast.error("Failed to generate questions with API. Please check your API key.");
+      } else {
+        toast.error("Failed to generate questions. Please try again.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -87,9 +96,12 @@ const Index = () => {
         </header>
 
         {quizState.questions.length === 0 && (
-          <div className="mb-10">
-            <QuizForm onGenerate={handleGenerateQuestions} isLoading={isLoading} />
-          </div>
+          <>
+            <ApiKeyInput onApiKeySubmit={handleApiKeySubmit} />
+            <div className="mb-10">
+              <QuizForm onGenerate={handleGenerateQuestions} isLoading={isLoading} />
+            </div>
+          </>
         )}
 
         {quizState.questions.length > 0 && (

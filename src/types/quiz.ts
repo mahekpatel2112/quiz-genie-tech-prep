@@ -16,6 +16,7 @@ export interface MultipleChoiceQuestion {
   question: string;
   options: string[];
   correctOption: number;
+  userAnswer?: number;
 }
 
 export interface TrueFalseQuestion {
@@ -23,12 +24,14 @@ export interface TrueFalseQuestion {
   question: string;
   answer: boolean;
   explanation: string;
+  userAnswer?: boolean;
 }
 
 export interface ShortAnswerQuestion {
   type: "Short Answer";
   question: string;
   suggestedAnswer: string;
+  userAnswer?: string;
 }
 
 export type Question = MultipleChoiceQuestion | TrueFalseQuestion | ShortAnswerQuestion;
@@ -38,4 +41,10 @@ export interface QuizGenerationParams {
   topic: string;
   questionType: QuestionType;
   numberOfQuestions: number;
+}
+
+export interface QuizAttemptState {
+  questions: Question[];
+  submitted: boolean;
+  score?: number;
 }

@@ -1,7 +1,7 @@
 
 import React, { useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { QuizGenerationParams, Question } from "@/types/quiz";
+import { QuizGenerationParams, Question, QuizAttemptState } from "@/types/quiz";
 import { generateQuizQuestions } from "@/services/quizService";
 import QuizForm from "@/components/QuizForm";
 import QuizResults from "@/components/QuizResults";
@@ -9,14 +9,20 @@ import { BookOpen, Lightbulb } from "lucide-react";
 import { toast } from "sonner";
 
 const Index = () => {
-  const [questions, setQuestions] = useState<Question[]>([]);
+  const [quizState, setQuizState] = useState<QuizAttemptState>({
+    questions: [],
+    submitted: false
+  });
   const [isLoading, setIsLoading] = useState(false);
 
   const handleGenerateQuestions = async (params: QuizGenerationParams) => {
     try {
       setIsLoading(true);
       const generatedQuestions = await generateQuizQuestions(params);
-      setQuestions(generatedQuestions);
+      setQuizState({
+        questions: generatedQuestions,
+        submitted: false
+      });
       toast.success(`Successfully generated ${params.numberOfQuestions} questions!`);
     } catch (error) {
       console.error("Error generating questions:", error);
@@ -27,7 +33,40 @@ const Index = () => {
   };
 
   const handleClearResults = () => {
-    setQuestions([]);
+    setQuizState({
+      questions: [],
+      submitted: false
+    });
+  };
+
+  const handleQuizSubmit = (answeredQuestions: Question[]) => {
+    // Calculate score for multiple choice and true/false questions
+    let correctAnswers = 0;
+    let totalAnswerable = 0;
+    
+    answeredQuestions.forEach(question => {
+      if (question.type === "Multiple Choice" && question.userAnswer !== undefined) {
+        totalAnswerable++;
+        if (question.userAnswer === question.correctOption) {
+          correctAnswers++;
+        }
+      } else if (question.type === "True/False" && question.userAnswer !== undefined) {
+        totalAnswerable++;
+        if (question.userAnswer === question.answer) {
+          correctAnswers++;
+        }
+      }
+    });
+    
+    const score = totalAnswerable > 0 ? Math.round((correctAnswers / totalAnswerable) * 100) : 0;
+    
+    setQuizState({
+      questions: answeredQuestions,
+      submitted: true,
+      score
+    });
+    
+    toast.success("Quiz submitted! Check your results below.");
   };
 
   return (
@@ -47,17 +86,25 @@ const Index = () => {
           </p>
         </header>
 
-        <div className="mb-10">
-          <QuizForm onGenerate={handleGenerateQuestions} isLoading={isLoading} />
-        </div>
-
-        {questions.length > 0 && (
-          <div className="mb-10 animate-fade-in">
-            <QuizResults questions={questions} onClear={handleClearResults} />
+        {quizState.questions.length === 0 && (
+          <div className="mb-10">
+            <QuizForm onGenerate={handleGenerateQuestions} isLoading={isLoading} />
           </div>
         )}
 
-        {questions.length === 0 && !isLoading && (
+        {quizState.questions.length > 0 && (
+          <div className="mb-10 animate-fade-in">
+            <QuizResults 
+              questions={quizState.questions} 
+              onClear={handleClearResults}
+              submitted={quizState.submitted}
+              score={quizState.score}
+              onSubmit={handleQuizSubmit}
+            />
+          </div>
+        )}
+
+        {quizState.questions.length === 0 && !isLoading && (
           <Card className="border-dashed border-2 bg-white/50">
             <CardContent className="flex flex-col items-center justify-center p-10 text-center">
               <Lightbulb className="h-16 w-16 text-quiz-blue mb-4" />
